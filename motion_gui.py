@@ -74,7 +74,7 @@ class MotionGui(QtWidgets.QWidget):
         self.setLayout(self.q_grid)
 
         self.setGeometry(50,50,512,612)
-        self.setWindowTitle("Sequence Continuation")
+        self.setWindowTitle("Motion Continuation")
         
     def start(self):
         self.pose_thread_event = Event()
@@ -102,7 +102,8 @@ class MotionGui(QtWidgets.QWidget):
             
             next_update_interval = max(self.pose_thread_interval - (end_time - start_time), 0.0)
             
-            sleep(self.pose_thread_interval)
+            #sleep(self.pose_thread_interval)
+            sleep(next_update_interval)
 
             
     def update_pred_seq(self):
@@ -110,6 +111,7 @@ class MotionGui(QtWidgets.QWidget):
         self.synthesis.update()       
         self.synth_pose_wpos = self.synthesis.synth_pose_wpos
         self.synth_pose_wrot = self.synthesis.synth_pose_wrot
+        self.synth_pose_lrot = self.synthesis.synth_pose_lrot
         
     def update_osc(self):
         
@@ -122,13 +124,52 @@ class MotionGui(QtWidgets.QWidget):
 
         self.synth_pose_wrot_rh = np.copy(self.synth_pose_wrot)
         
-        self.synth_pose_wrot_rh[:, 1] = self.synth_pose_wrot[:, 1]
-        self.synth_pose_wrot_rh[:, 2] = -self.synth_pose_wrot[:, 3]
-        self.synth_pose_wrot_rh[:, 3] = self.synth_pose_wrot[:, 2]
+        self.synth_pose_wrot_rh[:, 1] = self.synth_pose_wrot[:, 1] # x -> x
+        self.synth_pose_wrot_rh[:, 2] = -self.synth_pose_wrot[:, 3] # z -> -y
+        self.synth_pose_wrot_rh[:, 3] = self.synth_pose_wrot[:, 2] # y -> z
+        
+        self.synth_pose_lrot_rh = np.copy(self.synth_pose_lrot)
+        
+        # debug: send identity quaternion
+        #self.synth_pose_lrot_rh[:] = np.array([1.0, 0.0, 0.0, 0.0])
 
+        # quat in python: w x y z, quat in unreal x y z w
+        """
+        self.synth_pose_lrot_rh[:, 3] = self.synth_pose_lrot[:, 0] 
+        self.synth_pose_lrot_rh[:, 0] = self.synth_pose_lrot[:, 1]
+        self.synth_pose_lrot_rh[:, 1] = self.synth_pose_lrot[:, 2]
+        self.synth_pose_lrot_rh[:, 2] = -self.synth_pose_lrot[:, 3]
+        """
+        
+        """
+        self.synth_pose_lrot_rh[:, 0] = self.synth_pose_lrot[:, 0] 
+        self.synth_pose_lrot_rh[:, 1] = self.synth_pose_lrot[:, 1]
+        self.synth_pose_lrot_rh[:, 2] = -self.synth_pose_lrot[:, 2]
+        self.synth_pose_lrot_rh[:, 3] = self.synth_pose_lrot[:, 3]
+        """
+        
+        """
+        self.synth_pose_lrot_rh[:, 3] = self.synth_pose_lrot[:, 0] 
+        self.synth_pose_lrot_rh[:, 0] = self.synth_pose_lrot[:, 1]
+        self.synth_pose_lrot_rh[:, 1] = self.synth_pose_lrot[:, 2]
+        self.synth_pose_lrot_rh[:, 2] = -self.synth_pose_lrot[:, 3]
+        """
+
+        
+        """
+        self.synth_pose_lrot_rh[:, 3] = self.synth_pose_lrot[:, 0] # w
+        self.synth_pose_lrot_rh[:, 0] = self.synth_pose_lrot[:, 1] # x -> x
+        self.synth_pose_lrot_rh[:, 1] = -self.synth_pose_lrot[:, 3] # z -> -y
+        self.synth_pose_lrot_rh[:, 2] = self.synth_pose_lrot[:, 2] # y -> z
+        """
+        
+        #self.synth_pose_lrot_rh[:, 1] = self.synth_pose_lrot[:, 1]
+        #self.synth_pose_lrot_rh[:, 2] = -self.synth_pose_lrot[:, 3]
+        #self.synth_pose_lrot_rh[:, 3] = self.synth_pose_lrot[:, 2]
         
         self.sender.send("/mocap/joint/pos_world", self.synth_pose_wpos_rh)
         self.sender.send("/mocap/joint/rot_world", self.synth_pose_wrot_rh)
+        self.sender.send("/mocap/joint/rot_local", self.synth_pose_lrot_rh)
 
     def update_seq_plot(self):
         

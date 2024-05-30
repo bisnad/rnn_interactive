@@ -27,13 +27,21 @@ class MotionControl():
          
         self.dispatcher = dispatcher.Dispatcher()
         
-        self.dispatcher.map("/mocap/inputseq", self.setInputSequence)
-        self.dispatcher.map("/mocap/jointrot", self.setJointRotation)
+        self.dispatcher.map("/mocap/seqindex", self.setSequenceIndex)
+        self.dispatcher.map("/mocap/seqinput", self.setSequenceInput)
+        self.dispatcher.map("/mocap/seqblend", self.setSequenceBlend)
+        self.dispatcher.map("/mocap/rand", self.setRand)
+        self.dispatcher.map("/mocap/setjointrot", self.setJointRotation)
+        self.dispatcher.map("/mocap/changejointrot", self.changeJointRotation)
     
         self.server = osc_server.ThreadingOSCUDPServer((self.ip, self.port), self.dispatcher)
                 
     def start_server(self):
         self.server.serve_forever()
+        
+    def stop_server(self):
+        self.server.shutdown()
+        self.server.server_close()
 
     def start(self):
         
@@ -41,50 +49,45 @@ class MotionControl():
         self.th.start()
         
     def stop(self):
-        self.server.server_close()
         
-    def setInputSequence(self, address, *args):
-
+        self.th2 = threading.Thread(target=self.stop_server)
+        self.th2.start()
+        
+    def setSequenceIndex(self, address, *args):
+        
+        seq_index = args[0]
+        self.synthesis.setOrigSeqIndex(seq_index)
+        
+    def setSequenceInput(self, address, *args):
+        
         if len(args) == 1: # start frame index
         
             seq_start_index = args[0]
-
-            total_seq_length = self.motion_seq.shape[0] 
-            
-            seq_start_index = min(seq_start_index, total_seq_length - self.input_length)
-            seq_end_index = seq_start_index + self.input_length
-            
-            input_seq = self.motion_seq[seq_start_index:seq_end_index, ...]
-            
-            #self.gui.stop()
-            self.synthesis.setMotionSequence(input_seq)
+            self.synthesis.setOrigSeqStartFrameIndex(seq_start_index)
             
         elif len(args) == 2: # frame index, frame count
-                
+        
             seq_start_index = args[0]
             seq_frame_count = args[1]
             
-            total_seq_length = self.motion_seq.shape[0] 
+            self.synthesis.setOrigSeqStartFrameIndex(seq_start_index)
+            self.synthesis.setOrigSeqFrameCount(seq_frame_count)
             
-            seq_frame_count = min(seq_frame_count, self.input_length)
-            seq_start_index = min(seq_start_index, total_seq_length - seq_frame_count)
-            seq_end_index = seq_start_index + seq_frame_count
-            
-            if seq_frame_count == self.input_length:
-                input_seq = self.motion_seq[seq_start_index:seq_end_index, ...]
-            else: 
-                input_seq = self.motion_seq[seq_start_index:seq_end_index, ...]
-                
-            #input_seq =  np.concatenate( (self.motion_seq[seq_start_index:seq_end_index, ...], input_seq[seq_frame_count:, ...]), axis=0)
-            
-            input_seq =  np.concatenate( (input_seq[:seq_frame_count, ...], self.motion_seq[seq_start_index:seq_end_index, ...]), axis=0)
-            
-            self.synthesis.setMotionSequence(input_seq)
-            
+    def setSequenceBlend(self, address, *args):
+        
+        blend = args[0]
+        
+        self.synthesis.setOrigSeqBlend(blend)
+        
+    def setRand(self, address, *args):
+        
+        rand = args[0]
+        
+        self.synthesis.setRandRange(rand)
         
     def setJointRotation(self, address, *args):
         
-        if len(args) == 5: # joint index, rotation axis, rotation angle
+        if len(args) == 5: # start frame index, rotation axis, rotation angle
         
             joint_index = args[0]
             rot_axis = np.array([args[1], args[2], args[3]])
@@ -93,17 +96,64 @@ class MotionControl():
             rot_quat = t3d.quaternions.axangle2quat(rot_axis, rot_angle)
             
             self.synthesis.setJointRotation(joint_index, rot_quat, 1)
+        elif len(args) > 5:
             
-        elif len(args) > 5: # joint indices rotation axis, rotation angle
-        
-            argcount = len(args)
-
-            joint_index = args[0]
             rot_axis = np.array([args[-4], args[-3], args[-2]])
             rot_angle = args[-1]
-
             rot_quat = t3d.quaternions.axangle2quat(rot_axis, rot_angle)
             
-            for joint_index in args[:-4]:
+            for aI in range(len(args) - 4):
+                joint_index = args[aI]
                 
                 self.synthesis.setJointRotation(joint_index, rot_quat, 1)
+            
+        """
+        elif len(args) == 6: # start frame index, rotation axis, rotation angle, frame_count
+        
+            joint_index = args[0]
+            rot_axis = np.array([args[1], args[2], args[3]])
+            rot_angle = args[4]
+            frame_count = args[5]
+            
+            rot_quat = t3d.quaternions.axangle2quat(rot_axis, rot_angle)
+            
+            self.synthesis.setJointRotation(joint_index, rot_quat, frame_count)
+        """
+
+                
+            
+    def changeJointRotation(self, address, *args):
+        
+        if len(args) == 5: # start frame index, rotation axis, rotation angle
+        
+            joint_index = args[0]
+            rot_axis = np.array([args[1], args[2], args[3]])
+            rot_angle = args[4]
+            
+            rot_quat = t3d.quaternions.axangle2quat(rot_axis, rot_angle)
+            
+            self.synthesis.changeJointRotation(joint_index, rot_quat, 1)
+        elif len(args) > 5:
+            
+            rot_axis = np.array([args[-4], args[-3], args[-2]])
+            rot_angle = args[-1]
+            rot_quat = t3d.quaternions.axangle2quat(rot_axis, rot_angle)
+            
+            for aI in range(len(args) - 4):
+                joint_index = args[aI]
+                
+                self.synthesis.changeJointRotation(joint_index, rot_quat, 1)
+
+            
+        """
+        elif len(args) == 6: # start frame index, rotation axis, rotation angle, frame_count
+        
+            joint_index = args[0]
+            rot_axis = np.array([args[1], args[2], args[3]])
+            rot_angle = args[4]
+            frame_count = args[5]
+            
+            rot_quat = t3d.quaternions.axangle2quat(rot_axis, rot_angle)
+            
+            self.synthesis.changeJointRotation(joint_index, rot_quat, frame_count)
+        """

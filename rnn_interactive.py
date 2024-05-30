@@ -21,6 +21,8 @@ import scipy.linalg as sclinalg
 import os, sys, time, subprocess
 import numpy as np
 import math
+import pickle
+from time import sleep
 
 from common import utils
 from common import bvh_tools as bvh
@@ -39,11 +41,9 @@ print('Using {} device'.format(device))
 Mocap Settings
 """
 
-mocap_data_path = "../../../Data/qualisys/bvh/polytopia_fullbody_take2.bvh"
-mocap_valid_frame_range = [ 500, 9500 ]
-
-#mocap_data_path = "../../../Data/xsens/bvh/MurielDancing-005.bvh"
-#mocap_valid_frame_range = [ 50, 6400 ]
+mocap_file_path = "../../../../../../Data/mocap/stocos/solos/"
+mocap_files = ["Muriel_Take1.bvh" ]
+mocap_valid_frame_ranges = [ [ [ 0, 16709 ] ] ]
 
 mocap_input_length = 64
 mocap_fps = 50
@@ -55,16 +55,30 @@ Load Mocap Data
 bvh_tools = bvh.BVH_Tools()
 mocap_tools = mocap.Mocap_Tools()
 
-bvh_data = bvh_tools.load(mocap_data_path)
-mocap_data = mocap_tools.bvh_to_mocap(bvh_data)
-mocap_data["motion"]["rot_local"] = mocap_tools.euler_to_quat(mocap_data["motion"]["rot_local_euler"], mocap_data["rot_sequence"])
+all_mocap_data = []
 
-pose_sequence = mocap_data["motion"]["rot_local"].astype(np.float32)
+for mocap_file in mocap_files:
+    
+    print("process file ", mocap_file)
+    
+    bvh_data = bvh_tools.load(mocap_file_path + "/" + mocap_file)
+    mocap_data = mocap_tools.bvh_to_mocap(bvh_data)
+    mocap_data["motion"]["rot_local"] = mocap_tools.euler_to_quat(mocap_data["motion"]["rot_local_euler"], mocap_data["rot_sequence"])
 
-total_sequence_length = pose_sequence.shape[0]
-joint_count = pose_sequence.shape[1]
-joint_dim = pose_sequence.shape[2]
+    all_mocap_data.append(mocap_data)
+
+all_pose_sequences = []
+
+for mocap_data in all_mocap_data:
+    
+    pose_sequence = mocap_data["motion"]["rot_local"].astype(np.float32)
+    all_pose_sequences.append(pose_sequence)
+
+joint_count = all_pose_sequences[0].shape[1]
+joint_dim = all_pose_sequences[0].shape[2]
 pose_dim = joint_count * joint_dim
+
+all_pose_sequences[0].shape
 
 
 """
@@ -77,43 +91,33 @@ motion_model.config = {
     "node_dim": 512,
     "layer_count": 2,
     "device": device,
-    "weights_path": "../rnn/results_qualisys_polytopia_fullbody_take2/weights/rnn_weights_epoch_400"
+    "weights_path": "../rnn/results_xSens_stocos_takes1-7/weights/rnn_weights_epoch_200"
     }
-
-"""
-motion_model.config = {
-    "input_length": 64,
-    "data_dim": pose_dim,
-    "node_dim": 512,
-    "layer_count": 2,
-    "device": device,
-    "weights_path": "../rnn/results_xSens_murieldancing_005/weights/rnn_weights_epoch_400"
-    }
-"""
 
 model = motion_model.createModel(motion_model.config) 
+
 
 """
 Setup Motion Synthesis
 """
 
 synthesis_config  = motion_synthesis.config
-synthesis_config["skeleton"] = mocap_data["skeleton"]
+synthesis_config["skeleton"] = all_mocap_data[0]["skeleton"]
 synthesis_config["model"] = model
-synthesis_config["motion_seq"] = pose_sequence[1000:1000 + motion_model.config["input_length"], :, :]
+synthesis_config["seq_length"] = mocap_input_length
+synthesis_config["orig_sequences"] = all_pose_sequences
+synthesis_config["orig_seq_index"] = 0
 synthesis_config["device"] = device
 
 synthesis = motion_synthesis.MotionSynthesis(synthesis_config)
 
 
-synthesis.setMotionSequence(pose_sequence[2000:2000 + motion_model.config["input_length"], :, :])
-    
 """
 OSC Sender
 """
 
 motion_sender.config["ip"] = "127.0.0.1"
-motion_sender.config["port"] = 9004
+motion_sender.config["port"] = 9005
 
 osc_sender = motion_sender.OscSender(motion_sender.config)
 
@@ -130,6 +134,7 @@ from pathlib import Path
 
 motion_gui.config["synthesis"] = synthesis
 motion_gui.config["sender"] = osc_sender
+motion_gui.config["update_interval"] = 1.0 / mocap_fps
 
 app = QtWidgets.QApplication(sys.argv)
 gui = motion_gui.MotionGui(motion_gui.config)
@@ -158,5 +163,6 @@ Start Application
 osc_control.start()
 gui.show()
 app.exec_()
+
 
 osc_control.stop()

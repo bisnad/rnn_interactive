@@ -45,10 +45,12 @@ class Reccurent(nn.Module):
 def createModel(config):
     
     rnn = Reccurent(config["data_dim"], config["node_dim"], config["data_dim"], config["layer_count"]).to( config["device"])
+
+    if config["weights_path"] != "":
     
-    if config["device"] == "cuda":
-        rnn.load_state_dict(torch.load(config["weights_path"]))
-    else:
-        rnn.load_state_dict(torch.load(config["weights_path"], map_location=torch.device('cpu')))
+        if config["device"] == "cuda":
+            rnn.load_state_dict(torch.load(config["weights_path"]))
+        else:
+            rnn.load_state_dict(torch.load(config["weights_path"], map_location=torch.device('cpu')))
         
     return rnn
